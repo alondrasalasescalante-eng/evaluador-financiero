@@ -137,7 +137,7 @@ class ModeloFinanciero:
         crec_precio = float(self.datos.get("crec_precio", 0.03))
         costo_unit_base = float(self.datos.get("costo_unit_base", 440))
         
-        # Procesamiento de Costos Fijos y Variables desde Tablas Dinámicas
+        # Procesamiento de Costos Fijos y Variables
         mod_anual = float(self.datos.get("mod_anual", 224400.0))
         pct_mod_fijo = float(self.datos.get("pct_mod_fijo", 0.30))
         pct_mod_var = 1.0 - pct_mod_fijo
@@ -151,7 +151,7 @@ class ModeloFinanciero:
         gv_fijo_base = float(self.datos.get("gv_fijo_total", 200000.0))
         gv_var_base = float(self.datos.get("gv_var_total", 168000.0))
 
-        # Producción e Inventario PT
+        # Producción e Inventarios
         produccion_unidades = []
         inv_inicial_pt = 0.0
         for i in range(self.plazo):
@@ -253,7 +253,6 @@ class ModeloFinanciero:
             md_datos = modulo_compras_md[i]
             costo_unitario_md = md_datos["costo_unitario"]
             
-            # Dinámica Fija vs. Variable
             mod_anio = (mod_anual * pct_mod_fijo) + (mod_anual * pct_mod_var * factor_var)
             cif_anio = cif_fijo_base + (cif_var_base * factor_var)
             ga_anio = ga_fijo_base + (ga_var_base * factor_var)
