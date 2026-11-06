@@ -5,7 +5,7 @@ from modelo_financiero import ModeloFinanciero
 st.set_page_config(page_title="Evaluador Financiero de Proyectos", layout="wide")
 
 st.title("📊 Evaluador Financiero de Proyectos Pro")
-st.caption("Modelo integral con IGV, Inventarios, Estado de Resultados, Flujos de Caja y Balance General")
+st.caption("Modelo integral con Presupuesto de Inversiones, IGV, Compras MD, Flujos y Balance General")
 
 # Barra Lateral: Parámetros del Proyecto
 with st.sidebar:
@@ -54,19 +54,52 @@ with st.sidebar:
     pct_inv_md = st.number_input("% Inv. Final Materiales Directos", value=0.10, step=0.01)
     pct_dividendos = st.number_input("% Distribución Dividendos", value=0.40, step=0.01)
 
-# Lista por defecto de Activos
-activos_default = [
-    {"nombre": "Edificaciones", "tipo": "tangible", "valor": 650000, "vida_util": 20},
-    {"nombre": "Maquinaria", "tipo": "tangible", "valor": 1125000, "vida_util": 10},
-    {"nombre": "Equipos Auxiliares", "tipo": "tangible", "valor": 150000, "vida_util": 10},
-    {"nombre": "Equipos de Oficina", "tipo": "tangible", "valor": 30000, "vida_util": 4},
-    {"nombre": "Vehículos", "tipo": "tangible", "valor": 115000, "vida_util": 5},
-    {"nombre": "Muebles y Enseres", "tipo": "tangible", "valor": 25000, "vida_util": 10},
-    {"nombre": "Instalaciones", "tipo": "tangible", "valor": 120000, "vida_util": 10},
-    {"nombre": "Intangibles", "tipo": "intangible", "valor": 287336, "vida_util": 5}
+# Pestaña Principal para Inversiones
+st.header("🏗️ 1. Presupuesto de Inversión Fija (Tangible e Intangible)")
+st.write("Modifica directamente las cantidades, costos unitarios o vidas útiles en la tabla:")
+
+activos_base = [
+    {"nombre": "Terreno industrial", "tipo": "tangible", "cantidad": 2000, "costo_unitario": 90.0, "vida_util": 0},
+    {"nombre": "Edificaciones (Planta, Almacenes, Oficinas)", "tipo": "tangible", "cantidad": 1, "costo_unitario": 650000.0, "vida_util": 20},
+    {"nombre": "Maquinaria de producción", "tipo": "tangible", "cantidad": 1, "costo_unitario": 1125000.0, "vida_util": 10},
+    {"nombre": "Equipos auxiliares de planta", "tipo": "tangible", "cantidad": 1, "costo_unitario": 150000.0, "vida_util": 10},
+    {"nombre": "Equipos de oficina y cómputo", "tipo": "tangible", "cantidad": 1, "costo_unitario": 30000.0, "vida_util": 4},
+    {"nombre": "Vehículos (Camión y camioneta)", "tipo": "tangible", "cantidad": 1, "costo_unitario": 115000.0, "vida_util": 5},
+    {"nombre": "Muebles y enseres", "tipo": "tangible", "cantidad": 1, "costo_unitario": 25000.0, "vida_util": 10},
+    {"nombre": "Instalaciones complementarias", "tipo": "tangible", "cantidad": 1, "costo_unitario": 120000.0, "vida_util": 10},
+    {"nombre": "Estudio de factibilidad y Licencias", "tipo": "intangible", "cantidad": 1, "costo_unitario": 100000.0, "vida_util": 5},
+    {"nombre": "Certificaciones (HACCP, BPM) y Marca", "tipo": "intangible", "cantidad": 1, "costo_unitario": 187336.0, "vida_util": 5},
 ]
 
-# Construir diccionario de datos
+df_activos_input = pd.DataFrame(activos_base)
+
+df_activos_editado = st.data_editor(
+    df_activos_input,
+    column_config={
+        "nombre": st.column_config.TextColumn("Concepto / Activo"),
+        "tipo": st.column_config.SelectboxColumn("Tipo de Inversión", options=["tangible", "intangible"]),
+        "cantidad": st.column_config.NumberColumn("Cantidad", min_value=1, step=1),
+        "costo_unitario": st.column_config.NumberColumn("Valor Unitario ($)", format="$%f"),
+        "vida_util": st.column_config.NumberColumn("Vida Útil (Años)", min_value=0, step=1),
+    },
+    num_rows="dynamic",
+    use_container_width=True
+)
+
+df_activos_editado["valor"] = df_activos_editado["cantidad"] * df_activos_editado["costo_unitario"]
+activos_procesados = df_activos_editado.to_dict(orient="records")
+
+inv_tangible = df_activos_editado[df_activos_editado["tipo"] == "tangible"]["valor"].sum()
+inv_intangible = df_activos_editado[df_activos_editado["tipo"] == "intangible"]["valor"].sum()
+inv_fija_total = inv_tangible + inv_intangible
+
+c_inv1, c_inv2, c_inv3 = st.columns(3)
+c_inv1.metric("Inversión Fija Tangible", f"${inv_tangible:,.2f}")
+c_inv2.metric("Inversión Fija Intangible", f"${inv_intangible:,.2f}")
+c_inv3.metric("Total Inversión Fija", f"${inv_fija_total:,.2f}")
+
+st.divider()
+
 datos_entrada = {
     "tipo_proyeccion": tipo_proyeccion,
     "ventas_manuales": ventas_manuales,
@@ -92,18 +125,16 @@ datos_entrada = {
     "pct_dividendos": pct_dividendos,
     "impuestos": 0.30,
     "plazo": 5,
-    "activos": activos_default
+    "activos": activos_procesados
 }
 
-# Ejecución del Modelo
 modelo = ModeloFinanciero(datos_entrada)
 res = modelo.ejecutar_modelo_completo()
 
-# Formato numérico
 def fmt(n):
     return f"${n:,.2f}" if n is not None else "—"
 
-# KPIs Superiores
+st.subheader("🎯 Indicadores Financieros de Evaluación")
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("VAN Económico (FCL)", fmt(res["evaluacion"]["van_fcl"]))
 k2.metric("TIR Económica (FCL)", f"{res['evaluacion']['tir_fcl']:.2f}%" if res["evaluacion"]["tir_fcl"] else "N/A")
@@ -112,10 +143,10 @@ k4.metric("TIR Financiera (FCA)", f"{res['evaluacion']['tir_fca']:.2f}%" if res[
 
 st.divider()
 
-# Pestanas de Resultados
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🏛️ Balance General", "💵 Flujo de Efectivo", "📦 Compras MD",
-    "🧾 Liquidación IGV", "💼 Capital de Trabajo", "📈 Estado Resultados", "📊 Flujos Evaluativos"
+    "🛠️ Depreciación & Amortización", "🧾 Liquidación IGV", "💼 Capital de Trabajo", 
+    "📈 Estado Resultados", "📊 Flujos Evaluativos"
 ])
 
 with tab1:
@@ -134,21 +165,27 @@ with tab3:
     st.dataframe(df_md.style.format("{:,.2f}"), use_container_width=True)
 
 with tab4:
+    st.subheader("Cuadro de Depreciación y Amortización por Activo ($)")
+    df_depr = pd.DataFrame(res["depreciaciones"])
+    df_depr["Depreciación Anual"] = df_depr["depr_anual"]
+    st.dataframe(df_depr[["nombre", "tipo", "valor", "vida_util", "Depreciación Anual"]].style.format({"valor": fmt, "Depreciación Anual": fmt}), use_container_width=True)
+
+with tab5:
     st.subheader("Módulo de Impuesto General a las Ventas (IGV) ($)")
     df_igv = pd.DataFrame(res["modulo_igv"]).set_index("anio").T
     st.dataframe(df_igv.style.format(fmt), use_container_width=True)
 
-with tab5:
+with tab6:
     st.subheader("Necesidades de Capital de Trabajo ($)")
     df_ct = pd.DataFrame(res["modulo_ct"]).set_index("anio").T
     st.dataframe(df_ct.style.format(fmt), use_container_width=True)
 
-with tab6:
+with tab7:
     st.subheader("Estado de Resultados Proyectado ($)")
     df_er = pd.DataFrame(res["estado_resultados"]).set_index("anio").T
     st.dataframe(df_er.style.format(fmt), use_container_width=True)
 
-with tab7:
+with tab8:
     st.subheader("Flujos de Caja Evaluativos ($)")
     df_flujo = pd.DataFrame(res["flujo_detallado"], index=[f"Año {i}" for i in range(6)]).T
     st.dataframe(df_flujo.style.format(fmt), use_container_width=True)
