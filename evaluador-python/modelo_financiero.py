@@ -1,197 +1,182 @@
-import streamlit as st
-import pandas as pd
-from modelo_financiero import ModeloFinanciero
+import math
 
-st.set_page_config(page_title="Evaluador Financiero de Proyectos", layout="wide")
 
-st.title("📊 Evaluador Financiero de Proyectos Pro")
-st.caption("Modelo integral con Presupuesto de Inversiones, IGV, Compras MD, Flujos y Balance General")
+def numero_json(valor):
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return None
+    return numero if math.isfinite(numero) else None
 
-# Barra Lateral: Parámetros del Proyecto
-with st.sidebar:
-    st.header("⚙️ Configuración del Proyecto")
+
+def npv_nativo(rate, values):
+    """Calcula el Valor Actual Neto (VAN)."""
+    return sum(v / ((1 + rate) ** i) for i, v in enumerate(values))
+
+
+def irr_nativo(values, iterations=1000):
+    """Calcula la Tasa Interna de Retorno (TIR) mediante bisección."""
+    if not any(x < 0 for x in values) or not any(x > 0 for x in values):
+        return None
     
-    st.subheader("1. Proyección de Ventas")
-    tipo_proyeccion = st.radio("Modalidad de Proyección", ["Manual por Año", "Por Tasa % y Capacidad Máx."])
-    
-    ventas_manuales = []
-    if tipo_proyeccion == "Manual por Año":
-        st.write("Ingrese unidades estimadas por año:")
-        c1, c2, c3, c4, c5 = st.columns(5)
-        v1 = c1.number_input("Año 1", value=4000)
-        v2 = c2.number_input("Año 2", value=4200)
-        v3 = c3.number_input("Año 3", value=4400)
-        v4 = c4.number_input("Año 4", value=4700)
-        v5 = c5.number_input("Año 5", value=5000)
-        ventas_manuales = [v1, v2, v3, v4, v5]
-        unidades_base, crec_unidades, capacidad_max = 4000, 0.05, 100000
-    else:
-        unidades_base = st.number_input("Unidades Base (Año 1)", value=4000)
-        crec_unidades = st.number_input("Tasa Crecimiento Unidades (ej. 0.05)", value=0.05, step=0.01)
-        capacidad_max = st.number_input("Capacidad Máxima de Planta (Unidades)", value=6000)
+    low, high = -0.9999, 10.0
+    for _ in range(iterations):
+        mid = (low + high) / 2
+        val = sum(v / ((1 + mid) ** i) for i, v in enumerate(values))
+        if abs(val) < 1e-6:
+            return mid
+        if val > 0:
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2
 
-    precio_base = st.number_input("Precio Unitario Base ($)", value=840.0)
-    crec_precio = st.number_input("Crecimiento Precio (ej. 0.03)", value=0.03, step=0.01)
 
-    st.subheader("2. Costos y Gastos ($)")
-    costo_unit_base = st.number_input("Costo Unitario Materiales ($)", value=378.0)
-    mod = st.number_input("Mano de Obra Directa (MOD Anual)", value=224400.0)
-    costos_indirectos = st.number_input("Costos Indirectos Fabricación", value=635400.0)
-    gastos_ventas = st.number_input("Gastos de Ventas Anuales", value=271400.0)
-    gastos_admin = st.number_input("Gastos Administrativos Fijos", value=223000.0)
+def calcular_tir_segura(flujos):
+    try:
+        res = irr_nativo(flujos)
+        return numero_json(res)
+    except Exception:
+        return None
 
-    st.subheader("3. Financiamiento y Tasas")
-    prestamo = st.number_input("Monto del Préstamo Bancario ($)", value=1173354.0)
-    tasa_interes = st.number_input("Tasa de Interés Anual (ej. 0.12)", value=0.12, step=0.01)
-    cok = st.number_input("Tasa COK / Descuento (ej. 0.14)", value=0.14, step=0.01)
-    valor_residual = st.number_input("Valor Residual al Año 5 ($)", value=0.0)
 
-    st.subheader("4. Políticas Comerciales e IGV")
-    igv = st.number_input("Tasa IGV (ej. 0.18)", value=0.18, step=0.01)
-    dias_cobro = st.number_input("Días de Cobro Clientes", value=30)
-    dias_pago = st.number_input("Días de Pago Proveedores", value=45)
-    pct_inv_pt = st.number_input("% Inv. Final Producto Terminado", value=0.10, step=0.01)
-    pct_inv_md = st.number_input("% Inv. Final Materiales Directos", value=0.10, step=0.01)
-    pct_dividendos = st.number_input("% Distribución Dividendos", value=0.40, step=0.01)
+class ModeloFinanciero:
+    def __init__(self, datos):
+        self.datos = datos
+        self.plazo = max(1, int(datos.get("plazo", 5)))
+        self.cok = float(datos.get("cok", 0.14))
+        self.ke = float(datos.get("ke", self.cok))
+        self.impuesto_renta = float(datos.get("impuestos", 0.30))
+        self.prestamo = max(0.0, float(datos.get("prestamo", 1173354)))
+        self.tasa_interes = float(datos.get("tasa_interes", 0.12))
+        self.valor_residual = max(0.0, float(datos.get("valor_residual", 0)))
+        
+        # Políticas
+        self.igv = float(datos.get("igv", 0.18))
+        self.dias_cobro = float(datos.get("dias_cobro", 30))
+        self.dias_pago = float(datos.get("dias_pago", 45))
+        self.pct_inv_pt = float(datos.get("pct_inv_pt", 0.10))
+        self.pct_inv_md = float(datos.get("pct_inv_md", 0.10))
+        self.pct_dividendos = float(datos.get("pct_dividendos", 0.40))
 
-# Pestaña Principal para Inversiones en la Pantalla Central
-st.header("🏗️ 1. Presupuesto de Inversión Fija (Tangible e Intangible)")
-st.write("Modifica directamente las cantidades, costos unitarios o vidas útiles en la tabla para calcular la depreciación y amortización:")
+    def calcular_depreciacion_activos(self):
+        activos = self.datos.get("activos", [])
+        total_depreciacion = 0.0
+        inversion_tangible = 0.0
+        desglose = []
+        for act in activos:
+            valor = float(act.get("valor", 0) or 0)
+            vida_util = float(act.get("vida_util", 0) or 0)
+            tipo = "intangible" if str(act.get("tipo", "tangible")).lower() == "intangible" else "tangible"
+            depreciacion = valor / vida_util if vida_util > 0 else 0.0
+            total_depreciacion += depreciacion
+            if tipo == "tangible":
+                inversion_tangible += valor
+            desglose.append({
+                "nombre": str(act.get("nombre") or "Activo"),
+                "tipo": tipo,
+                "valor": valor,
+                "vida_util": vida_util,
+                "depr_anual": depreciacion
+            })
+        return total_depreciacion, desglose, inversion_tangible
 
-activos_base = [
-    {"nombre": "Terreno industrial", "tipo": "tangible", "cantidad": 2000, "costo_unitario": 90.0, "vida_util": 0},
-    {"nombre": "Edificaciones (Planta, Almacenes, Oficinas)", "tipo": "tangible", "cantidad": 1, "costo_unitario": 650000.0, "vida_util": 20},
-    {"nombre": "Maquinaria de producción", "tipo": "tangible", "cantidad": 1, "costo_unitario": 1125000.0, "vida_util": 10},
-    {"nombre": "Equipos auxiliares de planta", "tipo": "tangible", "cantidad": 1, "costo_unitario": 150000.0, "vida_util": 10},
-    {"nombre": "Equipos de oficina y cómputo", "tipo": "tangible", "cantidad": 1, "costo_unitario": 30000.0, "vida_util": 4},
-    {"nombre": "Vehículos (Camión y camioneta)", "tipo": "tangible", "cantidad": 1, "costo_unitario": 115000.0, "vida_util": 5},
-    {"nombre": "Muebles y enseres", "tipo": "tangible", "cantidad": 1, "costo_unitario": 25000.0, "vida_util": 10},
-    {"nombre": "Instalaciones complementarias", "tipo": "tangible", "cantidad": 1, "costo_unitario": 120000.0, "vida_util": 10},
-    {"nombre": "Estudio de factibilidad y Licencias", "tipo": "intangible", "cantidad": 1, "costo_unitario": 100000.0, "vida_util": 5},
-    {"nombre": "Certificaciones (HACCP, BPM) y Marca", "tipo": "intangible", "cantidad": 1, "costo_unitario": 187336.0, "vida_util": 5},
-]
+    def calcular_servicio_deuda(self):
+        cronograma = []
+        saldo = self.prestamo
+        
+        if self.prestamo <= 0:
+            cuota = 0.0
+        elif self.tasa_interes == 0:
+            cuota = self.prestamo / self.plazo
+        else:
+            i = self.tasa_interes
+            cuota = float(self.prestamo * (i * ((1 + i) ** self.plazo)) / (((1 + i) ** self.plazo) - 1))
 
-df_activos_input = pd.DataFrame(activos_base)
+        for anio in range(1, self.plazo + 1):
+            saldo_inicial = saldo
+            interes = saldo_inicial * self.tasa_interes
+            amortizacion = min(saldo_inicial, max(0.0, cuota - interes))
+            saldo = max(0.0, saldo_inicial - amortizacion)
+            if anio == self.plazo and saldo > 0:
+                amortizacion += saldo
+                saldo = 0.0
+            cuota_anual = interes + amortizacion
+            cronograma.append({
+                "anio": anio,
+                "saldo_inicial": saldo_inicial,
+                "interes": interes,
+                "amortizacion": amortizacion,
+                "cuota": cuota_anual,
+                "saldo_final": saldo,
+            })
+        return cronograma
 
-# Editor de tablas estilo Excel
-df_activos_editado = st.data_editor(
-    df_activos_input,
-    column_config={
-        "nombre": st.column_config.TextColumn("Concepto / Activo"),
-        "tipo": st.column_config.SelectboxColumn("Tipo de Inversión", options=["tangible", "intangible"]),
-        "cantidad": st.column_config.NumberColumn("Cantidad", min_value=1, step=1),
-        "costo_unitario": st.column_config.NumberColumn("Valor Unitario ($)", format="$%f"),
-        "vida_util": st.column_config.NumberColumn("Vida Útil (Años)", min_value=0, step=1),
-    },
-    num_rows="dynamic",
-    use_container_width=True
-)
+    def ejecutar_modelo_completo(self):
+        deuda = self.calcular_servicio_deuda()
+        depreciacion_anual, desglose_activos, inversion_tangible = self.calcular_depreciacion_activos()
+        inversion_fija = sum(float(a["valor"]) for a in desglose_activos)
 
-# Cálculo de Valor Total de Inversiones
-df_activos_editado["valor"] = df_activos_editado["cantidad"] * df_activos_editado["costo_unitario"]
-activos_procesados = df_activos_editado.to_dict(orient="records")
+        # 1. Proyección de Ventas
+        tipo_proyeccion = self.datos.get("tipo_proyeccion", "Manual por Año")
+        ventas_unidades = []
+        
+        if tipo_proyeccion == "Manual por Año":
+            ventas_unidades = [float(v) for v in self.datos.get("ventas_manuales", [4000, 4200, 4400, 4700, 5000])]
+            if len(ventas_unidades) <= self.plazo:
+                ventas_unidades.append(ventas_unidades[-1])
+        else:
+            unidades_base = float(self.datos.get("unidades_base", 4000))
+            crec_unidades = float(self.datos.get("crec_unidades", 0.05))
+            capacidad_max = float(self.datos.get("capacidad_max", 100000))
+            for i in range(self.plazo + 1):
+                v = min(unidades_base * ((1 + crec_unidades) ** i), capacidad_max)
+                ventas_unidades.append(v)
 
-inv_tangible = df_activos_editado[df_activos_editado["tipo"] == "tangible"]["valor"].sum()
-inv_intangible = df_activos_editado[df_activos_editado["tipo"] == "intangible"]["valor"].sum()
-inv_fija_total = inv_tangible + inv_intangible
+        precio_base = float(self.datos.get("precio_base", 1140))
+        crec_precio = float(self.datos.get("crec_precio", 0.03))
+        costo_unit_base = float(self.datos.get("costo_unit_base", 440))
+        mod = float(self.datos.get("mod", 224400))
+        costos_indirectos = float(self.datos.get("costos_indirectos", 635400))
+        gastos_ventas = float(self.datos.get("gastos_ventas", 271400))
+        gastos_admin = float(self.datos.get("gastos_admin", 223000))
 
-c_inv1, c_inv2, c_inv3 = st.columns(3)
-c_inv1.metric("Inversión Fija Tangible", f"${inv_tangible:,.2f}")
-c_inv2.metric("Inversión Fija Intangible", f"${inv_intangible:,.2f}")
-c_inv3.metric("Total Inversión Fija", f"${inv_fija_total:,.2f}")
+        # Producción e Inventario PT
+        produccion_unidades = []
+        inv_inicial_pt = 0.0
+        for i in range(self.plazo):
+            v_act = ventas_unidades[i]
+            inv_fin_pt = v_act * self.pct_inv_pt
+            prod = v_act + inv_fin_pt - inv_inicial_pt
+            produccion_unidades.append(prod)
+            inv_inicial_pt = inv_fin_pt
 
-st.divider()
+        prod_ext = ventas_unidades[self.plazo] + (ventas_unidades[self.plazo] * self.pct_inv_pt) - inv_inicial_pt
+        produccion_unidades.append(prod_ext)
 
-# Construir diccionario de datos para el modelo
-datos_entrada = {
-    "tipo_proyeccion": tipo_proyeccion,
-    "ventas_manuales": ventas_manuales,
-    "unidades_base": unidades_base,
-    "crec_unidades": crec_unidades,
-    "capacidad_max": capacidad_max,
-    "precio_base": precio_base,
-    "crec_precio": crec_precio,
-    "costo_unit_base": costo_unit_base,
-    "mod": mod,
-    "costos_indirectos": costos_indirectos,
-    "gastos_ventas": gastos_ventas,
-    "gastos_admin": gastos_admin,
-    "prestamo": prestamo,
-    "tasa_interes": tasa_interes,
-    "cok": cok,
-    "valor_residual": valor_residual,
-    "igv": igv,
-    "dias_cobro": dias_cobro,
-    "dias_pago": dias_pago,
-    "pct_inv_pt": pct_inv_pt,
-    "pct_inv_md": pct_inv_md,
-    "pct_dividendos": pct_dividendos,
-    "impuestos": 0.30,
-    "plazo": 5,
-    "activos": activos_procesados
-}
+        # Compras MD
+        modulo_compras_md = []
+        inv_inicial_md = 0.0
+        for i in range(self.plazo):
+            costo_unit_md = costo_unit_base * ((1 + 0.02) ** i)
+            req_prod_actual = produccion_unidades[i]
+            req_prod_sig = produccion_unidades[i + 1]
+            inv_final_md = req_prod_sig * self.pct_inv_md
+            compras_u = req_prod_actual + inv_final_md - inv_inicial_md
+            compras_sin_igv = compras_u * costo_unit_md
+            
+            modulo_compras_md.append({
+                "anio": i + 1, "req_prod": req_prod_actual, "inv_final_md": inv_final_md,
+                "inv_inicial_md": inv_inicial_md, "compras_unidades": compras_u,
+                "costo_unitario": costo_unit_md, "compras_sin_igv": compras_sin_igv,
+                "compras_con_igv": compras_sin_igv * (1 + self.igv)
+            })
+            inv_inicial_md = inv_final_md
 
-# Ejecución del Modelo Financiero
-modelo = ModeloFinanciero(datos_entrada)
-res = modelo.ejecutar_modelo_completo()
+        # Capital de Trabajo Año 0
+        compras_a1_con_igv = modulo_compras_md[0]["compras_con_igv"]
+        egresos_a1_con_igv = compras_a1_con_igv + ((costos_indirectos + gastos_ventas + gastos_admin) * (1 + self.igv))
+        ventas_a1_con_igv = (ventas_unidades[0] * precio_base) * (1 + self.igv)
 
-def fmt(n):
-    return f"${n:,.2f}" if n is not None else "—"
-
-# KPIs Financieros Principales
-st.subheader("🎯 Indicadores Financieros de Evaluación")
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("VAN Económico (FCL)", fmt(res["evaluacion"]["van_fcl"]))
-k2.metric("TIR Económica (FCL)", f"{res['evaluacion']['tir_fcl']:.2f}%" if res["evaluacion"]["tir_fcl"] else "N/A")
-k3.metric("VAN Financiero (FCA)", fmt(res["evaluacion"]["van_fca"]))
-k4.metric("TIR Financiera (FCA)", f"{res['evaluacion']['tir_fca']:.2f}%" if res["evaluacion"]["tir_fca"] else "N/A")
-
-st.divider()
-
-# Pestanas con los estados financieros
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-    "🏛️ Balance General", "💵 Flujo de Efectivo", "📦 Compras MD",
-    "🛠️ Depreciación & Amortización", "🧾 Liquidación IGV", "💼 Capital de Trabajo", 
-    "📈 Estado Resultados", "📊 Flujos Evaluativos"
-])
-
-with tab1:
-    st.subheader("Estado de Situación Financiera Proyectado ($)")
-    df_bs = pd.DataFrame(res["estado_situacion"]).set_index("anio").T
-    st.dataframe(df_bs.style.format(fmt), use_container_width=True)
-
-with tab2:
-    st.subheader("Estado de Flujo de Efectivo Proyectado ($)")
-    df_fe = pd.DataFrame(res["flujo_efectivo"]).set_index("anio").T
-    st.dataframe(df_fe.style.format(fmt), use_container_width=True)
-
-with tab3:
-    st.subheader("Compras y Requerimiento de Materiales Directos")
-    df_md = pd.DataFrame(res["modulo_compras_md"]).set_index("anio").T
-    st.dataframe(df_md.style.format("{:,.2f}"), use_container_width=True)
-
-with tab4:
-    st.subheader("Cuadro de Depreciación y Amortización por Activo ($)")
-    df_depr = pd.DataFrame(res["depreciaciones"])
-    df_depr["Depreciación Anual"] = df_depr["depr_anual"]
-    st.dataframe(df_depr[["nombre", "tipo", "valor", "vida_util", "Depreciación Anual"]].style.format({"valor": fmt, "Depreciación Anual": fmt}), use_container_width=True)
-
-with tab5:
-    st.subheader("Módulo de Impuesto General a las Ventas (IGV) ($)")
-    df_igv = pd.DataFrame(res["modulo_igv"]).set_index("anio").T
-    st.dataframe(df_igv.style.format(fmt), use_container_width=True)
-
-with tab6:
-    st.subheader("Necesidades de Capital de Trabajo ($)")
-    df_ct = pd.DataFrame(res["modulo_ct"]).set_index("anio").T
-    st.dataframe(df_ct.style.format(fmt), use_container_width=True)
-
-with tab7:
-    st.subheader("Estado de Resultados Proyectado ($)")
-    df_er = pd.DataFrame(res["estado_resultados"]).set_index("anio").T
-    st.dataframe(df_er.style.format(fmt), use_container_width=True)
-
-with tab8:
-    st.subheader("Flujos de Caja Evaluativos ($)")
-    df_flujo = pd.DataFrame(res["flujo_detallado"], index=[f"Año {i}" for i in range(6)]).T
-    st.dataframe(df_flujo.style.format(fmt), use_container_width=True)
+        cxc_a0 = ventas_a1_con_igv * (self.dias_cobro / 360)
+        cxp_a0 = egresos_a1_con_igv * (self.dias_pago / 360)
