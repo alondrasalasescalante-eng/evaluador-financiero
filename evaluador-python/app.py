@@ -192,13 +192,19 @@ with tab2:
 
 with tab3:
     st.subheader("Cuadro Comparativo de Egresos Proyectados ($)")
-    st.write("**Egresos Sin IGV:**")
-    df_egr_sin = pd.DataFrame(res["egresos_sin_igv"]).set_index("anio").T
-    st.dataframe(df_egr_sin.style.format(fmt), use_container_width=True)
+    egr_sin = res.get("egresos_sin_igv")
+    egr_con = res.get("egresos_con_igv")
     
-    st.write("**Egresos Con IGV:**")
-    df_egr_con = pd.DataFrame(res["egresos_con_igv"]).set_index("anio").T
-    st.dataframe(df_egr_con.style.format(fmt), use_container_width=True)
+    if egr_sin and egr_con:
+        st.write("**Egresos Sin IGV:**")
+        df_egr_sin = pd.DataFrame(egr_sin).set_index("anio").T
+        st.dataframe(df_egr_sin.style.format(fmt), use_container_width=True)
+        
+        st.write("**Egresos Con IGV:**")
+        df_egr_con = pd.DataFrame(egr_con).set_index("anio").T
+        st.dataframe(df_egr_con.style.format(fmt), use_container_width=True)
+    else:
+        st.info("Actualiza 'modelo_financiero.py' en GitHub para ver las tablas detalladas de egresos.")
 
 with tab4:
     st.subheader("Compras y Requerimiento de Materiales Directos")
