@@ -1,5 +1,4 @@
 import math
-import numpy_financial as npf
 
 
 def numero_json(valor):
@@ -10,12 +9,34 @@ def numero_json(valor):
     return numero if math.isfinite(numero) else None
 
 
-def calcular_tir_segura(flujos):
-    if not any(x < 0 for x in flujos) or not any(x > 0 for x in flujos):
+def npv_nativo(rate, values):
+    """Calcula el Valor Actual Neto (VAN) sin librerías externas."""
+    return sum(v / ((1 + rate) ** i) for i, v in enumerate(values))
+
+
+def irr_nativo(values, iterations=1000):
+    """Calcula la Tasa Interna de Retorno (TIR) mediante bisección."""
+    if not any(x < 0 for x in values) or not any(x > 0 for x in values):
         return None
+    
+    low, high = -0.9999, 10.0
+    for _ in range(iterations):
+        mid = (low + high) / 2
+        val = sum(v / ((1 + mid) ** i) for i, v in enumerate(values))
+        if abs(val) < 1e-6:
+            return mid
+        if val > 0:
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2
+
+
+def calcular_tir_segura(flujos):
     try:
-        return numero_json(npf.irr(flujos))
-    except (ArithmeticError, ValueError, OverflowError):
+        res = irr_nativo(flujos)
+        return numero_json(res)
+    except Exception:
         return None
 
 
@@ -63,12 +84,15 @@ class ModeloFinanciero:
     def calcular_servicio_deuda(self):
         cronograma = []
         saldo = self.prestamo
+        
+        # Cálculo de cuota constante
         if self.prestamo <= 0:
             cuota = 0.0
         elif self.tasa_interes == 0:
             cuota = self.prestamo / self.plazo
         else:
-            cuota = float(npf.pmt(self.tasa_interes, self.plazo, -self.prestamo))
+            i = self.tasa_interes
+            cuota = float(self.prestamo * (i * ((1 + i) ** self.plazo)) / (((1 + i) ** self.plazo) - 1))
 
         for anio in range(1, self.plazo + 1):
             saldo_inicial = saldo
@@ -101,7 +125,6 @@ class ModeloFinanciero:
         if tipo_proyeccion == "Manual por Año":
             ventas_unidades = [float(v) for v in self.datos.get("ventas_manuales", [4000, 4200, 4400, 4700, 5000])]
             if len(ventas_unidades) <= self.plazo:
-                # Proyección estabilizada para N+1
                 ventas_unidades.append(ventas_unidades[-1])
         else:
             unidades_base = float(self.datos.get("unidades_base", 4000))
@@ -326,9 +349,9 @@ class ModeloFinanciero:
             for k, v in valores.items():
                 filas_flujo[k].append(v)
 
-        van_fcl = float(npf.npv(self.cok, fcl))
+        van_fcl = float(npv_nativo(self.cok, fcl))
         tir_fcl = calcular_tir_segura(fcl)
-        van_fca = float(npf.npv(self.ke, fca))
+        van_fca = float(npv_nativo(self.ke, fca))
         tir_fca = calcular_tir_segura(fca)
 
         return {
