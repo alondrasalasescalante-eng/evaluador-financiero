@@ -239,3 +239,39 @@ with tab9:
     st.subheader("Flujos de Caja Evaluativos ($)")
     df_flujo = pd.DataFrame(res["flujo_detallado"], index=[f"Año {i}" for i in range(6)]).T
     st.dataframe(df_flujo.style.format(fmt), use_container_width=True)
+
+import plotly.graph_objects as go
+
+# ---------------------------------------------------------
+# 1. Indicador Visual de Viabilidad Financiera
+# ---------------------------------------------------------
+van_val = res.get("evaluacion", {}).get("van_fcl", 0) or 0
+
+if van_val > 0:
+    st.success(f"✅ **Proyecto viable:** El VAN económico es positivo ({fmt(van_val)}). Genera valor por encima de la tasa de descuento.")
+else:
+    st.error(f"❌ **Proyecto no viable:** El VAN económico es negativo ({fmt(van_val)}). El proyecto no cubre el costo de oportunidad del capital.")
+
+# ---------------------------------------------------------
+# 2. Gráfico Interactivo de Flujos de Caja
+# ---------------------------------------------------------
+st.subheader("📈 Comportamiento de los Flujos de Caja")
+
+flujo_econ = res["flujo_detallado"]["flujo_economico"]
+flujo_financ = res["flujo_detallado"]["flujo_financiero"]
+anios_eje = [f"Año {i}" for i in range(len(flujo_econ))]
+
+fig = go.Figure()
+fig.add_trace(go.Bar(x=anios_eje, y=flujo_econ, name="Flujo de Caja Libre (FCL)", marker_color="#38bdf8"))
+fig.add_trace(go.Bar(x=anios_eje, y=flujo_financ, name="Flujo de Caja Financiero (FCA)", marker_color="#818cf8"))
+
+fig.update_layout(
+    barmode="group",
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(color="#f8fafc"),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    margin=dict(l=20, r=20, t=30, b=20)
+)
+
+st.plotly_chart(fig, use_container_width=True)
