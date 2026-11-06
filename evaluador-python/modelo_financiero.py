@@ -136,10 +136,19 @@ class ModeloFinanciero:
         precio_base = float(self.datos.get("precio_base", 1140))
         crec_precio = float(self.datos.get("crec_precio", 0.03))
         costo_unit_base = float(self.datos.get("costo_unit_base", 440))
+        
+        # Desglose de Mano de Obra y Personal
         mod = float(self.datos.get("mod", 224400))
+        moi = float(self.datos.get("moi", 150000))
         costos_indirectos = float(self.datos.get("costos_indirectos", 635400))
-        gastos_ventas = float(self.datos.get("gastos_ventas", 271400))
-        gastos_admin = float(self.datos.get("gastos_admin", 223000))
+        
+        personal_admin = float(self.datos.get("personal_admin", 223000))
+        otros_gastos_admin = float(self.datos.get("otros_gastos_admin", 61000))
+        
+        tiene_personal_ventas = self.datos.get("tiene_personal_ventas", True)
+        personal_ventas = float(self.datos.get("personal_ventas", 180000)) if tiene_personal_ventas else 0.0
+        comision_ventas_pct = float(self.datos.get("comision_ventas_pct", 0.025)) if tiene_personal_ventas else 0.0
+        otros_gastos_ventas = float(self.datos.get("otros_gastos_ventas", 96600)) if tiene_personal_ventas else 0.0
 
         # Producción e Inventario PT
         produccion_unidades = []
@@ -173,13 +182,21 @@ class ModeloFinanciero:
             })
             inv_inicial_md = inv_final_md
 
+        egresos_sin_igv = []
+        egresos_con_igv = []
+
         # Capital de Trabajo Año 0
         compras_a1_con_igv = modulo_compras_md[0]["compras_con_igv"]
-        egresos_a1_con_igv = compras_a1_con_igv + ((costos_indirectos + gastos_ventas + gastos_admin) * (1 + self.igv))
         ventas_a1_con_igv = (ventas_unidades[0] * precio_base) * (1 + self.igv)
+        
+        g_admin_a1 = personal_admin + otros_gastos_admin
+        g_ventas_a1 = personal_ventas + (ventas_unidades[0] * precio_base * comision_ventas_pct) + otros_gastos_ventas
+        
+        egresos_operativos_afectos_igv_a1 = compras_a1_con_igv + (costos_indirectos + otros_gastos_admin + otros_gastos_ventas) * (1 + self.igv)
+        egresos_no_afectos_a1 = mod + moi + personal_admin + personal_ventas
 
         cxc_a0 = ventas_a1_con_igv * (self.dias_cobro / 360)
-        cxp_a0 = egresos_a1_con_igv * (self.dias_pago / 360)
+        cxp_a0 = (egresos_operativos_afectos_igv_a1 + egresos_no_afectos_a1) * (self.dias_pago / 360)
         inv_pt_a0 = (ventas_unidades[0] * self.pct_inv_pt) * costo_unit_base
         inv_md_a0 = modulo_compras_md[0]["inv_final_md"] * costo_unit_base
         ct_inicial = (cxc_a0 + inv_pt_a0 + inv_md_a0) - cxp_a0
@@ -230,12 +247,46 @@ class ModeloFinanciero:
 
             md_datos = modulo_compras_md[i]
             costo_unitario_md = md_datos["costo_unitario"]
-            costo_ventas = (v_unidades * costo_unitario_md) + mod + costos_indirectos
-            gastos_operativos = gastos_ventas + gastos_admin
+            
+            # Costo de Ventas
+            costo_ventas = (v_unidades * costo_unitario_md) + mod + moi + costos_indirectos
+            
+            # Gastos de Ventas y Admin
+            comision_ventas = ventas * comision_ventas_pct
+            gastos_v = personal_ventas + comision_ventas + otros_gastos_ventas
+            gastos_a = personal_admin + otros_gastos_admin
+            gastos_operativos = gastos_v + gastos_a
 
-            egresos_afectos_igv = md_datos["compras_sin_igv"] + costos_indirectos + gastos_operativos
+            # Cuadro de Egresos Con y Sin IGV
+            mat_directos_sin_igv = md_datos["compras_sin_igv"]
+            mat_directos_con_igv = md_datos["compras_con_igv"]
+            gastos_ind_con_igv = costos_indirectos * (1 + self.igv)
+            gastos_v_otros_con_igv = otros_gastos_ventas * (1 + self.igv)
+            gastos_a_otros_con_igv = otros_gastos_admin * (1 + self.igv)
+
+            total_egr_sin_igv = mat_directos_sin_igv + mod + moi + costos_indirectos + personal_ventas + comision_ventas + otros_gastos_ventas + personal_admin + otros_gastos_admin
+            total_egr_con_igv = mat_directos_con_igv + mod + moi + gastos_ind_con_igv + personal_ventas + comision_ventas + gastos_v_otros_con_igv + personal_admin + gastos_a_otros_con_igv
+
+            egresos_sin_igv.append({
+                "anio": anio, "md": mat_directos_sin_igv, "mod": mod, "moi": moi,
+                "indirectos": costos_indirectos, "pers_ventas": personal_ventas,
+                "comision_ventas": comision_ventas, "otros_ventas": otros_gastos_ventas,
+                "pers_admin": personal_admin, "otros_admin": otros_gastos_admin,
+                "total": total_egr_sin_igv
+            })
+
+            egresos_con_igv.append({
+                "anio": anio, "md": mat_directos_con_igv, "mod": mod, "moi": moi,
+                "indirectos": gastos_ind_con_igv, "pers_ventas": personal_ventas,
+                "comision_ventas": comision_ventas, "otros_ventas": gastos_v_otros_con_igv,
+                "pers_admin": personal_admin, "otros_admin": gastos_a_otros_con_igv,
+                "total": total_egr_con_igv
+            })
+
+            # IGV
+            egresos_afectos_igv_sin = mat_directos_sin_igv + costos_indirectos + otros_gastos_ventas + otros_gastos_admin
             igv_ventas = ventas * self.igv
-            igv_egresos = egresos_afectos_igv * self.igv
+            igv_egresos = egresos_afectos_igv_sin * self.igv
             saldo_igv = igv_ventas - igv_egresos
 
             if credito_fiscal > 0:
@@ -254,7 +305,7 @@ class ModeloFinanciero:
             })
 
             cxc = (ventas + igv_ventas) * (self.dias_cobro / 360)
-            cxp = (egresos_afectos_igv + igv_egresos) * (self.dias_pago / 360)
+            cxp = total_egr_con_igv * (self.dias_pago / 360)
             inv_pt_val = (v_unidades * self.pct_inv_pt) * costo_unitario_md
             inv_md_val = md_datos["inv_final_md"] * costo_unitario_md
 
@@ -293,7 +344,7 @@ class ModeloFinanciero:
             })
 
             ingresos_efectivo = (ventas + igv_ventas) - (cxc - estado_situacion[i]["cxc"])
-            egresos_efectivo = (egresos_afectos_igv + igv_egresos) - (cxp - estado_situacion[i]["cxp"]) + mod
+            egresos_efectivo = total_egr_con_igv - (cxp - estado_situacion[i]["cxp"])
             
             fe_operativo = ingresos_efectivo - egresos_efectivo - igv_pagar - impuesto_con_deuda
             fe_inversion = self.valor_residual if anio == self.plazo else 0.0
@@ -357,6 +408,8 @@ class ModeloFinanciero:
             "deuda": deuda,
             "depreciaciones": desglose_activos,
             "modulo_compras_md": modulo_compras_md,
+            "egresos_sin_igv": egresos_sin_igv,
+            "egresos_con_igv": egresos_con_igv,
             "modulo_igv": modulo_igv,
             "modulo_ct": modulo_ct,
             "estado_situacion": estado_situacion,
