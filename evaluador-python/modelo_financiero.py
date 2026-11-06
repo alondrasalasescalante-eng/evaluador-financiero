@@ -117,7 +117,7 @@ class ModeloFinanciero:
         depreciacion_anual, desglose_activos, inversion_tangible = self.calcular_depreciacion_activos()
         inversion_fija = sum(float(a["valor"]) for a in desglose_activos)
 
-        # 1. Proyección de Ventas
+        # Proyección de Ventas
         tipo_proyeccion = self.datos.get("tipo_proyeccion", "Manual por Año")
         ventas_unidades = []
         
@@ -137,18 +137,19 @@ class ModeloFinanciero:
         crec_precio = float(self.datos.get("crec_precio", 0.03))
         costo_unit_base = float(self.datos.get("costo_unit_base", 440))
         
-        # Desglose de Mano de Obra y Personal
-        mod = float(self.datos.get("mod", 224400))
-        moi = float(self.datos.get("moi", 150000))
-        costos_indirectos = float(self.datos.get("costos_indirectos", 635400))
+        # Procesamiento de Costos Fijos y Variables desde Tablas Dinámicas
+        mod_anual = float(self.datos.get("mod_anual", 224400.0))
+        pct_mod_fijo = float(self.datos.get("pct_mod_fijo", 0.30))
+        pct_mod_var = 1.0 - pct_mod_fijo
         
-        personal_admin = float(self.datos.get("personal_admin", 223000))
-        otros_gastos_admin = float(self.datos.get("otros_gastos_admin", 61000))
-        
-        tiene_personal_ventas = self.datos.get("tiene_personal_ventas", True)
-        personal_ventas = float(self.datos.get("personal_ventas", 180000)) if tiene_personal_ventas else 0.0
-        comision_ventas_pct = float(self.datos.get("comision_ventas_pct", 0.025)) if tiene_personal_ventas else 0.0
-        otros_gastos_ventas = float(self.datos.get("otros_gastos_ventas", 96600)) if tiene_personal_ventas else 0.0
+        cif_fijo_base = float(self.datos.get("cif_fijo_total", 450000.0))
+        cif_var_base = float(self.datos.get("cif_var_total", 335400.0))
+
+        ga_fijo_base = float(self.datos.get("ga_fijo_total", 250000.0))
+        ga_var_base = float(self.datos.get("ga_var_total", 34000.0))
+
+        gv_fijo_base = float(self.datos.get("gv_fijo_total", 200000.0))
+        gv_var_base = float(self.datos.get("gv_var_total", 168000.0))
 
         # Producción e Inventario PT
         produccion_unidades = []
@@ -189,11 +190,12 @@ class ModeloFinanciero:
         compras_a1_con_igv = modulo_compras_md[0]["compras_con_igv"]
         ventas_a1_con_igv = (ventas_unidades[0] * precio_base) * (1 + self.igv)
         
-        g_admin_a1 = personal_admin + otros_gastos_admin
-        g_ventas_a1 = personal_ventas + (ventas_unidades[0] * precio_base * comision_ventas_pct) + otros_gastos_ventas
-        
-        egresos_operativos_afectos_igv_a1 = compras_a1_con_igv + (costos_indirectos + otros_gastos_admin + otros_gastos_ventas) * (1 + self.igv)
-        egresos_no_afectos_a1 = mod + moi + personal_admin + personal_ventas
+        costos_indirectos_a1 = cif_fijo_base + cif_var_base
+        g_admin_a1 = ga_fijo_base + ga_var_base
+        g_ventas_a1 = gv_fijo_base + gv_var_base
+
+        egresos_operativos_afectos_igv_a1 = compras_a1_con_igv + (costos_indirectos_a1 + g_admin_a1 + g_ventas_a1) * (1 + self.igv)
+        egresos_no_afectos_a1 = mod_anual
 
         cxc_a0 = ventas_a1_con_igv * (self.dias_cobro / 360)
         cxp_a0 = (egresos_operativos_afectos_igv_a1 + egresos_no_afectos_a1) * (self.dias_pago / 360)
@@ -239,52 +241,49 @@ class ModeloFinanciero:
             "igv_pagar": [0.0], "cambio_ct": [-ct_inicial]
         }
 
+        ratio_prod_base = produccion_unidades[0] if produccion_unidades[0] > 0 else 1.0
+
         for i in range(self.plazo):
             anio = i + 1
             precio = precio_base * ((1 + crec_precio) ** i)
             v_unidades = ventas_unidades[i]
             ventas = v_unidades * precio
+            factor_var = produccion_unidades[i] / ratio_prod_base
 
             md_datos = modulo_compras_md[i]
             costo_unitario_md = md_datos["costo_unitario"]
             
-            # Costo de Ventas
-            costo_ventas = (v_unidades * costo_unitario_md) + mod + moi + costos_indirectos
-            
-            # Gastos de Ventas y Admin
-            comision_ventas = ventas * comision_ventas_pct
-            gastos_v = personal_ventas + comision_ventas + otros_gastos_ventas
-            gastos_a = personal_admin + otros_gastos_admin
-            gastos_operativos = gastos_v + gastos_a
+            # Dinámica Fija vs. Variable
+            mod_anio = (mod_anual * pct_mod_fijo) + (mod_anual * pct_mod_var * factor_var)
+            cif_anio = cif_fijo_base + (cif_var_base * factor_var)
+            ga_anio = ga_fijo_base + (ga_var_base * factor_var)
+            gv_anio = gv_fijo_base + (gv_var_base * factor_var)
 
-            # Cuadro de Egresos Con y Sin IGV
+            costo_ventas = (v_unidades * costo_unitario_md) + mod_anio + cif_anio
+            gastos_operativos = ga_anio + gv_anio
+
             mat_directos_sin_igv = md_datos["compras_sin_igv"]
             mat_directos_con_igv = md_datos["compras_con_igv"]
-            gastos_ind_con_igv = costos_indirectos * (1 + self.igv)
-            gastos_v_otros_con_igv = otros_gastos_ventas * (1 + self.igv)
-            gastos_a_otros_con_igv = otros_gastos_admin * (1 + self.igv)
+            cif_con_igv = cif_anio * (1 + self.igv)
+            ga_con_igv = ga_anio * (1 + self.igv)
+            gv_con_igv = gv_anio * (1 + self.igv)
 
-            total_egr_sin_igv = mat_directos_sin_igv + mod + moi + costos_indirectos + personal_ventas + comision_ventas + otros_gastos_ventas + personal_admin + otros_gastos_admin
-            total_egr_con_igv = mat_directos_con_igv + mod + moi + gastos_ind_con_igv + personal_ventas + comision_ventas + gastos_v_otros_con_igv + personal_admin + gastos_a_otros_con_igv
+            total_egr_sin_igv = mat_directos_sin_igv + mod_anio + cif_anio + ga_anio + gv_anio
+            total_egr_con_igv = mat_directos_con_igv + mod_anio + cif_con_igv + ga_con_igv + gv_con_igv
 
             egresos_sin_igv.append({
-                "anio": anio, "md": mat_directos_sin_igv, "mod": mod, "moi": moi,
-                "indirectos": costos_indirectos, "pers_ventas": personal_ventas,
-                "comision_ventas": comision_ventas, "otros_ventas": otros_gastos_ventas,
-                "pers_admin": personal_admin, "otros_admin": otros_gastos_admin,
+                "anio": anio, "md": mat_directos_sin_igv, "mod": mod_anio,
+                "cif": cif_anio, "gastos_admin": ga_anio, "gastos_ventas": gv_anio,
                 "total": total_egr_sin_igv
             })
 
             egresos_con_igv.append({
-                "anio": anio, "md": mat_directos_con_igv, "mod": mod, "moi": moi,
-                "indirectos": gastos_ind_con_igv, "pers_ventas": personal_ventas,
-                "comision_ventas": comision_ventas, "otros_ventas": gastos_v_otros_con_igv,
-                "pers_admin": personal_admin, "otros_admin": gastos_a_otros_con_igv,
+                "anio": anio, "md": mat_directos_con_igv, "mod": mod_anio,
+                "cif": cif_con_igv, "gastos_admin": ga_con_igv, "gastos_ventas": gv_con_igv,
                 "total": total_egr_con_igv
             })
 
-            # IGV
-            egresos_afectos_igv_sin = mat_directos_sin_igv + costos_indirectos + otros_gastos_ventas + otros_gastos_admin
+            egresos_afectos_igv_sin = mat_directos_sin_igv + cif_anio + ga_anio + gv_anio
             igv_ventas = ventas * self.igv
             igv_egresos = egresos_afectos_igv_sin * self.igv
             saldo_igv = igv_ventas - igv_egresos
