@@ -50,7 +50,9 @@ with st.sidebar:
         comision_ventas_pct = st.number_input("Comisión de Ventas (ej. 0.025 = 2.5%)", value=0.025, step=0.005)
         otros_gastos_ventas = st.number_input("Otros Gastos de Ventas", value=96600.0)
     else:
-        personal_ventas, comision_ventas_pct, otros_gastos_ventas = 0.0, 0.0, 0.0
+        personal_ventas = 0.0
+        comision_ventas_pct = 0.0
+        otros_gastos_ventas = 0.0
 
     st.subheader("3. Financiamiento y Tasas")
     prestamo = st.number_input("Monto del Préstamo Bancario ($)", value=1173354.0)
@@ -100,8 +102,8 @@ df_activos_editado = st.data_editor(
 df_activos_editado["valor"] = df_activos_editado["cantidad"] * df_activos_editado["costo_unitario"]
 activos_procesados = df_activos_editado.to_dict(orient="records")
 
-inv_tangible = df_activos_editado[df_activos_editado["tipo"] == "tangible"]["valor"].sum()
-inv_intangible = df_activos_editado[df_activos_editado["tipo"] == "intangible"]["valor"].sum()
+inv_tangible = float(df_activos_editado[df_activos_editado["tipo"] == "tangible"]["valor"].sum())
+inv_intangible = float(df_activos_editado[df_activos_editado["tipo"] == "intangible"]["valor"].sum())
 inv_fija_total = inv_tangible + inv_intangible
 
 c_inv1, c_inv2, c_inv3 = st.columns(3)
@@ -167,10 +169,11 @@ def fmt_pct(n):
 
 st.subheader("🎯 Indicadores Financieros de Evaluación")
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("VAN Económico (FCL)", fmt(res.get("evaluacion", {}).get("van_fcl")))
-k2.metric("TIR Económica (FCL)", fmt_pct(res.get("evaluacion", {}).get("tir_fcl")))
-k3.metric("VAN Financiero (FCA)", fmt(res.get("evaluacion", {}).get("van_fca")))
-k4.metric("TIR Financiera (FCA)", fmt_pct(res.get("evaluacion", {}).get("tir_fca")))
+eval_dict = res.get("evaluacion", {})
+k1.metric("VAN Económico (FCL)", fmt(eval_dict.get("van_fcl")))
+k2.metric("TIR Económica (FCL)", fmt_pct(eval_dict.get("tir_fcl")))
+k3.metric("VAN Financiero (FCA)", fmt(eval_dict.get("van_fca")))
+k4.metric("TIR Financiera (FCA)", fmt_pct(eval_dict.get("tir_fca")))
 
 st.divider()
 
@@ -204,7 +207,7 @@ with tab3:
         df_egr_con = pd.DataFrame(egr_con).set_index("anio").T
         st.dataframe(df_egr_con.style.format(fmt), use_container_width=True)
     else:
-        st.info("Actualiza 'modelo_financiero.py' en GitHub para ver las tablas detalladas de egresos.")
+        st.info("Cargando información de egresos...")
 
 with tab4:
     st.subheader("Compras y Requerimiento de Materiales Directos")
