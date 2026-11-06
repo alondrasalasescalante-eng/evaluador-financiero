@@ -5,7 +5,7 @@ from modelo_financiero import ModeloFinanciero
 st.set_page_config(page_title="Evaluador Financiero de Proyectos", layout="wide")
 
 st.title("📊 Evaluador Financiero de Proyectos Pro")
-st.caption("Modelo integral con Presupuesto de Inversiones, IGV, Compras MD, Flujos y Balance General")
+st.caption("Modelo integral con Presupuesto de Inversiones, Personal, Egresos con/sin IGV y Balance General")
 
 # Barra Lateral: Parámetros del Proyecto
 with st.sidebar:
@@ -33,12 +33,24 @@ with st.sidebar:
     precio_base = st.number_input("Precio Unitario Base ($)", value=840.0)
     crec_precio = st.number_input("Crecimiento Precio (ej. 0.03)", value=0.03, step=0.01)
 
-    st.subheader("2. Costos y Gastos ($)")
+    st.subheader("2. Costos y Personal ($)")
     costo_unit_base = st.number_input("Costo Unitario Materiales ($)", value=378.0)
     mod = st.number_input("Mano de Obra Directa (MOD Anual)", value=224400.0)
-    costos_indirectos = st.number_input("Costos Indirectos Fabricación", value=635400.0)
-    gastos_ventas = st.number_input("Gastos de Ventas Anuales", value=271400.0)
-    gastos_admin = st.number_input("Gastos Administrativos Fijos", value=223000.0)
+    moi = st.number_input("Mano de Obra Indirecta (MOI Anual)", value=150000.0)
+    costos_indirectos = st.number_input("Costos Indirectos Fabricación (GIF)", value=635400.0)
+    
+    st.markdown("---")
+    personal_admin = st.number_input("Personal Administrativo (Anual)", value=223000.0)
+    otros_gastos_admin = st.number_input("Otros Gastos Administrativos", value=61000.0)
+    
+    st.markdown("---")
+    tiene_personal_ventas = st.toggle("¿Incluir Área de Ventas?", value=True)
+    if tiene_personal_ventas:
+        personal_ventas = st.number_input("Personal de Ventas (Anual)", value=180000.0)
+        comision_ventas_pct = st.number_input("Comisión de Ventas (ej. 0.025 = 2.5%)", value=0.025, step=0.005)
+        otros_gastos_ventas = st.number_input("Otros Gastos de Ventas", value=96600.0)
+    else:
+        personal_ventas, comision_ventas_pct, otros_gastos_ventas = 0.0, 0.0, 0.0
 
     st.subheader("3. Financiamiento y Tasas")
     prestamo = st.number_input("Monto del Préstamo Bancario ($)", value=1173354.0)
@@ -55,8 +67,7 @@ with st.sidebar:
     pct_dividendos = st.number_input("% Distribución Dividendos", value=0.40, step=0.01)
 
 # Pestaña Principal para Inversiones
-st.header("🏗️ 1. Presupuesto de Inversión Fija (Tangible e Intangible)")
-st.write("Modifica directamente las cantidades, costos unitarios o vidas útiles en la tabla:")
+st.header("🏗️ Presupuesto de Inversión Fija (Tangible e Intangible)")
 
 activos_base = [
     {"nombre": "Terreno industrial", "tipo": "tangible", "cantidad": 2000, "costo_unitario": 90.0, "vida_util": 0},
@@ -110,9 +121,14 @@ datos_entrada = {
     "crec_precio": crec_precio,
     "costo_unit_base": costo_unit_base,
     "mod": mod,
+    "moi": moi,
     "costos_indirectos": costos_indirectos,
-    "gastos_ventas": gastos_ventas,
-    "gastos_admin": gastos_admin,
+    "personal_admin": personal_admin,
+    "otros_gastos_admin": otros_gastos_admin,
+    "tiene_personal_ventas": tiene_personal_ventas,
+    "personal_ventas": personal_ventas,
+    "comision_ventas_pct": comision_ventas_pct,
+    "otros_gastos_ventas": otros_gastos_ventas,
     "prestamo": prestamo,
     "tasa_interes": tasa_interes,
     "cok": cok,
@@ -132,21 +148,36 @@ modelo = ModeloFinanciero(datos_entrada)
 res = modelo.ejecutar_modelo_completo()
 
 def fmt(n):
-    return f"${n:,.2f}" if n is not None else "—"
+    if n is None or isinstance(n, str):
+        return "—"
+    try:
+        val = float(n)
+        return f"${val:,.2f}"
+    except (ValueError, TypeError):
+        return "—"
+
+def fmt_pct(n):
+    if n is None or isinstance(n, str):
+        return "N/A"
+    try:
+        val = float(n)
+        return f"{val:.2f}%"
+    except (ValueError, TypeError):
+        return "N/A"
 
 st.subheader("🎯 Indicadores Financieros de Evaluación")
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("VAN Económico (FCL)", fmt(res["evaluacion"]["van_fcl"]))
-k2.metric("TIR Económica (FCL)", f"{res['evaluacion']['tir_fcl']:.2f}%" if res["evaluacion"]["tir_fcl"] else "N/A")
-k3.metric("VAN Financiero (FCA)", fmt(res["evaluacion"]["van_fca"]))
-k4.metric("TIR Financiera (FCA)", f"{res['evaluacion']['tir_fca']:.2f}%" if res["evaluacion"]["tir_fca"] else "N/A")
+k1.metric("VAN Económico (FCL)", fmt(res.get("evaluacion", {}).get("van_fcl")))
+k2.metric("TIR Económica (FCL)", fmt_pct(res.get("evaluacion", {}).get("tir_fcl")))
+k3.metric("VAN Financiero (FCA)", fmt(res.get("evaluacion", {}).get("van_fca")))
+k4.metric("TIR Financiera (FCA)", fmt_pct(res.get("evaluacion", {}).get("tir_fca")))
 
 st.divider()
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-    "🏛️ Balance General", "💵 Flujo de Efectivo", "📦 Compras MD",
-    "🛠️ Depreciación & Amortización", "🧾 Liquidación IGV", "💼 Capital de Trabajo", 
-    "📈 Estado Resultados", "📊 Flujos Evaluativos"
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    "🏛️ Balance General", "💵 Flujo de Efectivo", "💸 Egresos con/sin IGV",
+    "📦 Compras MD", "🛠️ Depreciación & Amortización", "🧾 Liquidación IGV", 
+    "💼 Capital de Trabajo", "📈 Estado Resultados", "📊 Flujos Evaluativos"
 ])
 
 with tab1:
@@ -160,32 +191,42 @@ with tab2:
     st.dataframe(df_fe.style.format(fmt), use_container_width=True)
 
 with tab3:
+    st.subheader("Cuadro Comparativo de Egresos Proyectados ($)")
+    st.write("**Egresos Sin IGV:**")
+    df_egr_sin = pd.DataFrame(res["egresos_sin_igv"]).set_index("anio").T
+    st.dataframe(df_egr_sin.style.format(fmt), use_container_width=True)
+    
+    st.write("**Egresos Con IGV:**")
+    df_egr_con = pd.DataFrame(res["egresos_con_igv"]).set_index("anio").T
+    st.dataframe(df_egr_con.style.format(fmt), use_container_width=True)
+
+with tab4:
     st.subheader("Compras y Requerimiento de Materiales Directos")
     df_md = pd.DataFrame(res["modulo_compras_md"]).set_index("anio").T
     st.dataframe(df_md.style.format("{:,.2f}"), use_container_width=True)
 
-with tab4:
+with tab5:
     st.subheader("Cuadro de Depreciación y Amortización por Activo ($)")
     df_depr = pd.DataFrame(res["depreciaciones"])
     df_depr["Depreciación Anual"] = df_depr["depr_anual"]
     st.dataframe(df_depr[["nombre", "tipo", "valor", "vida_util", "Depreciación Anual"]].style.format({"valor": fmt, "Depreciación Anual": fmt}), use_container_width=True)
 
-with tab5:
+with tab6:
     st.subheader("Módulo de Impuesto General a las Ventas (IGV) ($)")
     df_igv = pd.DataFrame(res["modulo_igv"]).set_index("anio").T
     st.dataframe(df_igv.style.format(fmt), use_container_width=True)
 
-with tab6:
+with tab7:
     st.subheader("Necesidades de Capital de Trabajo ($)")
     df_ct = pd.DataFrame(res["modulo_ct"]).set_index("anio").T
     st.dataframe(df_ct.style.format(fmt), use_container_width=True)
 
-with tab7:
+with tab8:
     st.subheader("Estado de Resultados Proyectado ($)")
     df_er = pd.DataFrame(res["estado_resultados"]).set_index("anio").T
     st.dataframe(df_er.style.format(fmt), use_container_width=True)
 
-with tab8:
+with tab9:
     st.subheader("Flujos de Caja Evaluativos ($)")
     df_flujo = pd.DataFrame(res["flujo_detallado"], index=[f"Año {i}" for i in range(6)]).T
     st.dataframe(df_flujo.style.format(fmt), use_container_width=True)
