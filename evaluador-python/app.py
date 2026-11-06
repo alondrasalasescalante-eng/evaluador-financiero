@@ -1,51 +1,109 @@
+import io
 import streamlit as st
 import pandas as pd
 from modelo_financiero import ModeloFinanciero
 
+# Configuración de página con tema claro profesional
 st.set_page_config(
-    page_title="Evaluador Financiero de Proyectos",
-    page_icon="📈",
+    page_title="Evaluador Financiero Corporativo",
+    page_icon="💼",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS Personalizados
+# Estilos CSS Personalizados: Estética Ejecutiva (Fondo claro, azul marino, bordes finos)
 st.markdown("""
 <style>
-    .stApp { background-color: #0f172a; color: #f8fafc; }
-    .main-header { font-size: 2.2rem; font-weight: 700; color: #ffffff; margin-bottom: 0.2rem; }
-    .sub-header { font-size: 1.0rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    /* Fondo principal limpio */
+    .stApp {
+        background-color: #f8fafc;
+        color: #0f172a;
+    }
     
-    div[data-testid="stMetric"] {
-        background-color: #1e293b;
-        border: 1px solid #334155;
+    /* Header principal con acento azul corporativo */
+    .header-box {
+        background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
+        padding: 24px 32px;
         border-radius: 12px;
-        padding: 14px 18px;
+        color: #ffffff;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }
-    div[data-testid="stMetricLabel"] > label { color: #94a3b8 !important; font-weight: 600 !important; }
-    div[data-testid="stMetricValue"] > div { color: #38bdf8 !important; font-weight: 700 !important; }
+    .header-title {
+        font-size: 2.0rem;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    .header-sub {
+        font-size: 0.95rem;
+        opacity: 0.9;
+    }
+
+    /* Tarjetas de Métricas Resaltadas */
+    div[data-testid="stMetric"] {
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    div[data-testid="stMetricLabel"] > label {
+        color: #475569 !important;
+        font-weight: 600 !important;
+        font-size: 0.85rem !important;
+    }
+    div[data-testid="stMetricValue"] > div {
+        color: #0369a1 !important;
+        font-weight: 700 !important;
+    }
+
+    /* Tablas y DataEditor profesional */
+    .stDataFrame {
+        background-color: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+    }
     
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; background-color: #0f172a; }
-    .stTabs [data-baseweb="tab"] {
-        height: 45px; background-color: #1e293b; border-radius: 8px 8px 0px 0px;
-        color: #94a3b8; font-weight: 600; padding: 10px 16px;
+    /* Pestañas estilizadas */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 6px;
+        background-color: #f1f5f9;
+        padding: 6px;
+        border-radius: 10px;
     }
-    .stTabs [aria-selected="true"] { background-color: #2563eb !important; color: #ffffff !important; }
+    .stTabs [data-baseweb="tab"] {
+        height: 40px;
+        background-color: transparent;
+        border-radius: 6px;
+        color: #475569;
+        font-weight: 600;
+        padding: 8px 16px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #ffffff !important;
+        color: #1e3a8a !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-header">📈 Evaluador Financiero de Proyectos Pro</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Evaluación financiera integral con clasificación dinámica de Costos Fijos y Variables</div>', unsafe_allow_html=True)
+# Encabezado corporativo
+st.markdown("""
+<div class="header-box">
+    <div class="header-title">💼 Evaluador Financiero Corporativo</div>
+    <div class="header-sub">Plataforma de evaluación de proyectos, estructura de costos y generación de estados financieros proyectados</div>
+</div>
+""", unsafe_allow_html=True)
 
-# Barra Lateral: Parámetros Generales
+# Barra Lateral: Parámetros del Proyecto
 with st.sidebar:
-    st.title("⚙️ Parámetros Generales")
+    st.title("⚙️ Parámetros de Entrada")
     
     with st.expander("📦 Proyección de Ventas", expanded=True):
-        tipo_proyeccion = st.radio("Modalidad", ["Manual por Año", "Por Tasa % y Capacidad Máx."])
+        tipo_proyeccion = st.radio("Modalidad de Ventas", ["Manual por Año", "Por Tasa % y Capacidad"])
         ventas_manuales = []
         if tipo_proyeccion == "Manual por Año":
-            st.caption("Unidades por año:")
+            st.caption("Unidades proyectadas:")
             c1, c2, c3, c4, c5 = st.columns(5)
             v1 = c1.number_input("A1", value=4000)
             v2 = c2.number_input("A2", value=4200)
@@ -57,16 +115,16 @@ with st.sidebar:
         else:
             unidades_base = st.number_input("Unidades Año 1", value=4000)
             crec_unidades = st.number_input("Crecimiento Anual %", value=0.05, step=0.01)
-            capacidad_max = st.number_input("Techo Capacidad", value=6000)
+            capacidad_max = st.number_input("Capacidad Máxima", value=6000)
 
         precio_base = st.number_input("Precio Unitario Base ($)", value=840.0)
         crec_precio = st.number_input("Crecimiento Precio %", value=0.03, step=0.01)
-        costo_unit_base = st.number_input("Costo Unit. Materiales Directos ($)", value=378.0)
+        costo_unit_base = st.number_input("Costo Unitario Materiales ($)", value=378.0)
 
     with st.expander("🏦 Financiamiento y Estructura", expanded=False):
         prestamo = st.number_input("Monto Préstamo ($)", value=1173354.0)
         tasa_interes = st.number_input("Tasa Interés Anual", value=0.12, step=0.01)
-        cok = st.number_input("Tasa Descuento COK", value=0.14, step=0.01)
+        cok = st.number_input("Tasa COK / Descuento", value=0.14, step=0.01)
         valor_residual = st.number_input("Valor Residual Año 5", value=0.0)
 
     with st.expander("🏛️ Políticas Comerciales e IGV", expanded=False):
@@ -77,8 +135,8 @@ with st.sidebar:
         pct_inv_md = st.number_input("% Inv. Mat. Directo", value=0.10, step=0.01)
         pct_dividendos = st.number_input("% Distribución Dividendos", value=0.40, step=0.01)
 
-# Pestaña 1: Presupuesto de Inversiones
-st.subheader("🏗️ 1. Presupuesto de Inversión Fija (Tangible e Intangible)")
+# Pestaña Principal: Presupuesto de Inversiones
+st.subheader("🏗️ Presupuesto de Inversión Fija (Tangible e Intangible)")
 
 activos_base = [
     {"nombre": "Terreno industrial", "tipo": "tangible", "cantidad": 2000, "costo_unitario": 90.0, "vida_util": 0},
@@ -114,26 +172,25 @@ inv_intangible = float(df_activos_editado[df_activos_editado["tipo"] == "intangi
 inv_fija_total = inv_tangible + inv_intangible
 
 c_inv1, c_inv2, c_inv3 = st.columns(3)
-c_inv1.metric("Inversión Fija Tangible", f"${inv_tangible:,.2f}")
-c_inv2.metric("Inversión Fija Intangible", f"${inv_intangible:,.2f}")
+c_inv1.metric("Inversión Tangible Total", f"${inv_tangible:,.2f}")
+c_inv2.metric("Inversión Intangible Total", f"${inv_intangible:,.2f}")
 c_inv3.metric("Total Inversión Fija", f"${inv_fija_total:,.2f}")
 
 st.divider()
 
-# Pestaña 2: Dos Cuadros Editables para Costos y Gastos
-st.subheader("🏭 2. Presupuesto de Costos de Fabricación y Gastos Operativos")
-st.caption("Clasifica cada costo asignando su porcentaje Fijo y Variable (% Fijo + % Variable debe sumar 100%):")
+# Cuadros de Costos Fijos y Variables
+st.subheader("🏭 Presupuesto de Costos y Gastos Operativos (Fijos vs. Variables)")
 
 col_cif, col_ga_gv = st.columns(2)
 
 with col_cif:
-    st.markdown("### 🛠️ Cuadro 1: Costos Indirectos de Fabricación (CIF / GIF)")
+    st.markdown("#### 🛠️ Cuadro 1: Costos Indirectos de Fabricación (CIF)")
     cif_base = [
         {"concepto": "Materiales Indirectos", "monto_anual": 120000.0, "pct_fijo": 0.20, "pct_variable": 0.80},
         {"concepto": "Mano de Obra Indirecta (MOI)", "monto_anual": 150000.0, "pct_fijo": 0.80, "pct_variable": 0.20},
-        {"concepto": "Servicios de Planta (Luz, Agua, Gas)", "monto_anual": 210000.0, "pct_fijo": 0.30, "pct_variable": 0.70},
+        {"concepto": "Servicios de Planta (Luz, Agua)", "monto_anual": 210000.0, "pct_fijo": 0.30, "pct_variable": 0.70},
         {"concepto": "Mantenimiento y Repuestos", "monto_anual": 155400.0, "pct_fijo": 0.40, "pct_variable": 0.60},
-        {"concepto": "Seguros e Inspecciones de Planta", "monto_anual": 150000.0, "pct_fijo": 1.00, "pct_variable": 0.00},
+        {"concepto": "Seguros e Inspecciones", "monto_anual": 150000.0, "pct_fijo": 1.00, "pct_variable": 0.00},
     ]
     df_cif_editado = st.data_editor(
         pd.DataFrame(cif_base),
@@ -154,12 +211,12 @@ with col_cif:
     cif_var_total = float(df_cif_editado["cif_variable"].sum())
 
 with col_ga_gv:
-    st.markdown("### 💼 Cuadro 2: Gastos Operativos (Admin y Ventas)")
+    st.markdown("#### 💼 Cuadro 2: Gastos Operativos (Admin y Ventas)")
     gastos_base = [
         {"concepto": "Personal Administrativo", "tipo_gasto": "Admin", "monto_anual": 223000.0, "pct_fijo": 1.00, "pct_variable": 0.00},
-        {"concepto": "Servicios y Útiles de Administración", "tipo_gasto": "Admin", "monto_anual": 61000.0, "pct_fijo": 0.70, "pct_variable": 0.30},
-        {"concepto": "Personal y Jefatura de Ventas", "tipo_gasto": "Ventas", "monto_anual": 180000.0, "pct_fijo": 0.90, "pct_variable": 0.10},
-        {"concepto": "Comisiones por Ventas", "tipo_gasto": "Ventas", "monto_anual": 91600.0, "pct_fijo": 0.00, "pct_variable": 1.00},
+        {"concepto": "Servicios de Administración", "tipo_gasto": "Admin", "monto_anual": 61000.0, "pct_fijo": 0.70, "pct_variable": 0.30},
+        {"concepto": "Personal de Ventas", "tipo_gasto": "Ventas", "monto_anual": 180000.0, "pct_fijo": 0.90, "pct_variable": 0.10},
+        {"concepto": "Comisiones de Ventas", "tipo_gasto": "Ventas", "monto_anual": 91600.0, "pct_fijo": 0.00, "pct_variable": 1.00},
         {"concepto": "Publicidad y Promoción", "tipo_gasto": "Ventas", "monto_anual": 96600.0, "pct_fijo": 0.50, "pct_variable": 0.50},
     ]
     df_gastos_editado = st.data_editor(
@@ -180,15 +237,14 @@ with col_ga_gv:
 
     ga_fijo_total = float(df_gastos_editado[df_gastos_editado["tipo_gasto"] == "Admin"]["monto_fijo"].sum())
     ga_var_total = float(df_gastos_editado[df_gastos_editado["tipo_gasto"] == "Admin"]["monto_variable"].sum())
-    
     gv_fijo_total = float(df_gastos_editado[df_gastos_editado["tipo_gasto"] == "Ventas"]["monto_fijo"].sum())
     gv_var_total = float(df_gastos_editado[df_gastos_editado["tipo_gasto"] == "Ventas"]["monto_variable"].sum())
 
-# Cuadro Complementario: Mano de Obra Directa (MOD)
-st.markdown("### 👷 Cuadro MOD: Mano de Obra Directa")
+# Mano de Obra Directa (MOD)
+st.markdown("#### 👷 Cuadro MOD: Mano de Obra Directa")
 c_mod1, c_mod2 = st.columns(2)
 mod_anual = c_mod1.number_input("Mano de Obra Directa Total Anual ($)", value=224400.0)
-pct_mod_fijo = c_mod2.slider("Porcentaje Fijo de MOD (% fijos por salario base o supervisores directos)", 0.0, 1.0, 0.30, step=0.05)
+pct_mod_fijo = c_mod2.slider("Proporción de MOD Fija (% Salario base fijo)", 0.0, 1.0, 0.30, step=0.05)
 
 st.divider()
 
@@ -247,7 +303,7 @@ def fmt_pct(n):
         return "N/A"
 
 # Dashboard de Indicadores Principales
-st.subheader("🎯 Resumen de Evaluación Financiera")
+st.subheader("🎯 Resumen de Indicadores Financieros")
 k1, k2, k3, k4 = st.columns(4)
 eval_dict = res.get("evaluacion", {})
 k1.metric("VAN Económico (FCL)", fmt(eval_dict.get("van_fcl")))
@@ -255,9 +311,34 @@ k2.metric("TIR Económica (FCL)", fmt_pct(eval_dict.get("tir_fcl")))
 k3.metric("VAN Financiero (FCA)", fmt(eval_dict.get("van_fca")))
 k4.metric("TIR Financiera (FCA)", fmt_pct(eval_dict.get("tir_fca")))
 
+# Módulo de Exportación e Informes
+st.divider()
+st.subheader("📊 Módulo de Informes y Exportación")
+
+def generar_excel_informe():
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(res["estado_situacion"]).set_index("anio").T.to_excel(writer, sheet_name="Balance General")
+        pd.DataFrame(res["estado_resultados"]).set_index("anio").T.to_excel(writer, sheet_name="Estado Resultados")
+        pd.DataFrame(res["flujo_detallado"]).T.to_excel(writer, sheet_name="Flujos de Caja")
+        pd.DataFrame(res["depreciaciones"]).to_excel(writer, sheet_name="Depreciacion")
+        pd.DataFrame(res["modulo_compras_md"]).set_index("anio").T.to_excel(writer, sheet_name="Compras MD")
+        pd.DataFrame(res["modulo_igv"]).set_index("anio").T.to_excel(writer, sheet_name="IGV")
+    return output.getvalue()
+
+excel_bytes = generar_excel_informe()
+
+st.download_button(
+    label="📥 Descargar Informe Completo en Excel (.xlsx)",
+    data=excel_bytes,
+    file_name="Informe_Evaluacion_Financiera.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    use_container_width=True
+)
+
 st.divider()
 
-# Pestañas de Resultados
+# Pestañas de Resultados Financieros
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🏛️ Balance General", "💵 Flujo de Efectivo", "💸 Egresos con/sin IGV",
     "📦 Compras MD", "🛠️ Depreciación & Amortización", "🧾 Liquidación IGV", 
@@ -278,7 +359,6 @@ with tab3:
     st.subheader("Cuadro Comparativo de Egresos Proyectados ($)")
     egr_sin = res.get("egresos_sin_igv")
     egr_con = res.get("egresos_con_igv")
-    
     if egr_sin and egr_con:
         st.write("**Egresos Sin IGV:**")
         df_egr_sin = pd.DataFrame(egr_sin).set_index("anio").T
@@ -287,8 +367,6 @@ with tab3:
         st.write("**Egresos Con IGV:**")
         df_egr_con = pd.DataFrame(egr_con).set_index("anio").T
         st.dataframe(df_egr_con.style.format(fmt), use_container_width=True)
-    else:
-        st.info("Cargando información de egresos...")
 
 with tab4:
     st.subheader("Compras y Requerimiento de Materiales Directos")
